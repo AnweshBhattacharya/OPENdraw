@@ -4,6 +4,12 @@ Milestone 1 loads configuration, the device report, the SQLite schema, and
 the gallery manifest. Milestone 4 adds model loading and warmup here; the
 readiness flag is already gated on every *mandatory* component so the health
 endpoint's semantics do not change later.
+
+Until Milestone 4 lands, ``LINESCOUT_FIXTURE_MODE=false`` is a config error,
+not a supported "slow path" — nothing here loads a model, so `warmup` would
+otherwise sit at ``"pending"`` forever with no explanation. ``build_state``
+sets ``setup_error`` for that case explicitly so ``/health`` and the
+``not_ready`` 503 say why, instead of just reporting `warmup="pending"`.
 """
 
 from __future__ import annotations
@@ -124,6 +130,21 @@ def build_state(settings: Settings) -> AppState:
     ]
     if settings.fixture_mode:
         warnings.append("fixture mode: retrieval models are not loaded")
+    elif setup_error is None:
+        # Milestone 4 (real model loading) does not exist yet: nothing in this
+        # codebase ever loads a model or advances `warmup` past "pending", so
+        # disabling fixture mode today would otherwise boot successfully and
+        # then sit permanently unready with no explanation. Fail loudly and
+        # say why, instead of leaving `/health` reporting warmup="pending"
+        # forever with no error message. Remove this branch once Milestone 4
+        # lands and something here actually loads models and sets
+        # `warmup="complete"`.
+        setup_error = (
+            "LINESCOUT_FIXTURE_MODE=false requires real retrieval models, which are not "
+            "implemented yet (Milestone 4). Set LINESCOUT_FIXTURE_MODE=true until model "
+            "loading lands."
+        )
+        log.error(setup_error)
 
     return AppState(
         settings=settings,

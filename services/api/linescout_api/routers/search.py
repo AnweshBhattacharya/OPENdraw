@@ -3,11 +3,14 @@
 from __future__ import annotations
 
 import time
+from dataclasses import dataclass
 from typing import Annotated, NoReturn
 from uuid import UUID
 
+import anyio
 from fastapi import APIRouter, File, Form, Request, UploadFile
 from linescout_ml.taxonomy import PrimaryStyle
+from PIL import Image
 
 from linescout_api import fixture_ranker
 from linescout_api.config import MAX_POINT_COUNT, MAX_REVISION, MAX_STROKE_COUNT
@@ -22,6 +25,7 @@ from linescout_api.errors import (
 from linescout_api.preferences import compute_affinities, read_preferences
 from linescout_api.preprocessing import (
     PREPROCESSING_VERSION,
+    InkStats,
     RasterSufficiency,
     SnapshotError,
     VectorBranch,
@@ -38,12 +42,24 @@ from linescout_api.schemas import (
     SearchMode,
     SearchResponse,
     SearchTiming,
+    StrokeSequence,
     StrokeStatus,
     StyleSelection,
 )
 from linescout_api.state import AppState
 
 router = APIRouter(tags=["search"])
+
+
+@dataclass(slots=True)
+class _DecodedQuery:
+    """Result of the CPU-bound decode/measure step, run off the event loop."""
+
+    gray: Image.Image
+    stroke_sequence: StrokeSequence | None
+    stats: InkStats
+    raster: RasterSufficiency
+    vector: VectorBranch
 
 
 def _raise_snapshot_error(error: SnapshotError, field: str, limit: int | None = None) -> NoReturn:
@@ -132,60 +148,30 @@ async def search(
             },
         )
 
-    try:
-        gray = decode_snapshot(image_bytes, settings.max_image_bytes)
-    except SnapshotError as error:
-        _raise_snapshot_error(error, "image", settings.max_image_bytes)
-    expected_snapshot = settings.snapshot_size
-    if gray.size != (expected_snapshot, expected_snapshot):
-        raise unprocessable(
-            "image_dimensions",
-            f"snapshot must be {expected_snapshot}x{expected_snapshot}",
-            "image",
-        )
-    try:
-        stroke_sequence = decode_strokes(
-            strokes_bytes,
-            settings.max_strokes_bytes,
-            max_expanded_bytes=settings.max_strokes_decompressed_bytes,
-        )
-    except SnapshotError as error:
-        _raise_snapshot_error(error, "strokes", settings.max_strokes_bytes)
-
-    # Canvas dimensions are validated exactly against the vector payload; a
-    # logical 2048 request paired with a non-2048 vector canvas is rejected
-    # outright (never rescaled or silently reinterpreted).
-    if stroke_sequence is not None and (
-        stroke_sequence.canvas_width != expected_canvas
-        or stroke_sequence.canvas_height != expected_canvas
-    ):
-        raise unprocessable(
-            "canvas_dimensions",
-            f"strokes canvas must be {expected_canvas}x{expected_canvas}",
-            "strokes",
-        )
-
-    # stroke_count is structural (one JSON element per stroke) and must match
-    # the delivered payload exactly.
-    if stroke_sequence is not None and len(stroke_sequence.strokes) != stroke_count:
-        raise unprocessable(
-            "stroke_count_mismatch",
-            "stroke_count does not match the strokes payload",
-            "stroke_count",
-        )
-
-    stats = ink_stats(gray)
-    # Two independent verdicts. The raster decides whether there is a drawing
-    # to search at all; the vector payload decides only how much of it the
-    # stroke branch can rank. Absent or sparse vectors never make a drawing
-    # insufficient — they are a degradation the response discloses instead.
-    raster = raster_sufficiency(stats, settings.min_ink_diagonal_ratio)
-    vector = vector_branch(
-        stroke_sequence,
-        stroke_count=stroke_count,
-        point_count=point_count,
-        min_points=settings.min_points_for_search,
+    # Decoding the image, decoding the (possibly gzipped) stroke payload, and
+    # computing ink statistics are all CPU-bound and synchronous. Run them in
+    # a worker thread rather than inline in this coroutine, so one request's
+    # decode work never blocks the event loop for every other in-flight
+    # request on this (single) worker — this matters more once Milestone 4
+    # puts real model inference right after this step.
+    decoded = await anyio.to_thread.run_sync(
+        _decode_and_measure,
+        image_bytes,
+        strokes_bytes,
+        settings.max_image_bytes,
+        settings.max_strokes_bytes,
+        settings.max_strokes_decompressed_bytes,
+        settings.snapshot_size,
+        expected_canvas,
+        stroke_count,
+        point_count,
+        settings.min_ink_diagonal_ratio,
+        settings.min_points_for_search,
     )
+    stroke_sequence = decoded.stroke_sequence
+    stats = decoded.stats
+    raster = decoded.raster
+    vector = decoded.vector
 
     stroke_status = StrokeStatus.PRESENT if stroke_sequence is not None else StrokeStatus.ABSENT
     # point_count is not structural: the delivered payload is the ground truth
@@ -277,6 +263,84 @@ async def search(
     response.timing = timing(retrieval=retrieval_ms)
     _log_search(state, session_id, response, stroke_count, point_count)
     return response
+
+
+def _decode_and_measure(
+    image_bytes: bytes,
+    strokes_bytes: bytes | None,
+    max_image_bytes: int,
+    max_strokes_bytes: int,
+    max_strokes_decompressed_bytes: int,
+    expected_snapshot: int,
+    expected_canvas: int,
+    stroke_count: int,
+    point_count: int,
+    min_ink_diagonal_ratio: float,
+    min_points_for_search: int,
+) -> _DecodedQuery:
+    """The synchronous decode/validate/measure step, run off the event loop.
+
+    Raises the same ``HTTPException`` subclasses the route used to raise
+    inline; ``anyio.to_thread.run_sync`` propagates them back to the caller
+    unchanged, so error handling and status codes are unaffected by moving
+    this work onto a worker thread.
+    """
+    try:
+        gray = decode_snapshot(image_bytes, max_image_bytes)
+    except SnapshotError as error:
+        _raise_snapshot_error(error, "image", max_image_bytes)
+    if gray.size != (expected_snapshot, expected_snapshot):
+        raise unprocessable(
+            "image_dimensions",
+            f"snapshot must be {expected_snapshot}x{expected_snapshot}",
+            "image",
+        )
+    try:
+        stroke_sequence = decode_strokes(
+            strokes_bytes,
+            max_strokes_bytes,
+            max_expanded_bytes=max_strokes_decompressed_bytes,
+        )
+    except SnapshotError as error:
+        _raise_snapshot_error(error, "strokes", max_strokes_bytes)
+
+    # Canvas dimensions are validated exactly against the vector payload; a
+    # logical 2048 request paired with a non-2048 vector canvas is rejected
+    # outright (never rescaled or silently reinterpreted).
+    if stroke_sequence is not None and (
+        stroke_sequence.canvas_width != expected_canvas
+        or stroke_sequence.canvas_height != expected_canvas
+    ):
+        raise unprocessable(
+            "canvas_dimensions",
+            f"strokes canvas must be {expected_canvas}x{expected_canvas}",
+            "strokes",
+        )
+
+    # stroke_count is structural (one JSON element per stroke) and must match
+    # the delivered payload exactly.
+    if stroke_sequence is not None and len(stroke_sequence.strokes) != stroke_count:
+        raise unprocessable(
+            "stroke_count_mismatch",
+            "stroke_count does not match the strokes payload",
+            "stroke_count",
+        )
+
+    stats = ink_stats(gray)
+    # Two independent verdicts. The raster decides whether there is a drawing
+    # to search at all; the vector payload decides only how much of it the
+    # stroke branch can rank. Absent or sparse vectors never make a drawing
+    # insufficient — they are a degradation the response discloses instead.
+    raster = raster_sufficiency(stats, min_ink_diagonal_ratio)
+    vector = vector_branch(
+        stroke_sequence,
+        stroke_count=stroke_count,
+        point_count=point_count,
+        min_points=min_points_for_search,
+    )
+    return _DecodedQuery(
+        gray=gray, stroke_sequence=stroke_sequence, stats=stats, raster=raster, vector=vector
+    )
 
 
 def _degradations(
