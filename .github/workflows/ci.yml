@@ -57,6 +57,8 @@ jobs:
             module: linescout_ml
           - package: services/api
             module: linescout_api
+          - package: eval
+            module: clippy
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v5
