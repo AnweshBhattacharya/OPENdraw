@@ -11,7 +11,7 @@ if ! command -v uv >/dev/null 2>&1; then
   exit 1
 fi
 
-for pkg in ml services/api; do
+for pkg in ml services/api eval; do
   echo "==> $pkg"
   (cd "$pkg" && uv sync --frozen --extra dev --python 3.11)
 done

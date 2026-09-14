@@ -47,6 +47,7 @@ async function checkPackage(pkg, module) {
 async function main() {
   await checkPackage('ml', 'linescout_ml')
   await checkPackage('services/api', 'linescout_api')
+  await checkPackage('eval', 'clippy')
   console.log('\n==> scripts: ruff')
   const apiPy = venvPy('services/api')
   if (!existsSync(apiPy)) {
