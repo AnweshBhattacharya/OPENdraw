@@ -10,4 +10,5 @@ run() { local pkg=$1 module=$2
 }
 run ml linescout_ml
 run services/api linescout_api
+run eval clippy
 echo "==> scripts: ruff"; services/api/.venv/bin/ruff check --config services/api/pyproject.toml scripts/

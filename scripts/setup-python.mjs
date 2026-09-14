@@ -23,6 +23,7 @@ const VENV_PY_CANDIDATES = process.platform === 'win32'
 const WORKSPACES = [
   { name: 'ml', packageDir: 'ml' },
   { name: 'services/api', packageDir: 'services/api' },
+  { name: 'eval', packageDir: 'eval' },
 ]
 
 function run(cmd, args, options = {}) {
