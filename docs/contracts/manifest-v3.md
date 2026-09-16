@@ -135,6 +135,16 @@ may carry `sfw_human` with reviewer `ingestion:<pipeline_version>` and
 `derivative_reasons` return stable machine-readable reasons for every
 violation; the predicates are exactly "the reason list is empty".
 
+### Consumers of `is_servable`
+
+Both the live API's gallery loader (`services/api/linescout_api/gallery.py`)
+and the Milestone 3 Clippy comparator (`eval/clippy/gallery.py`,
+`Manifest.servable_records`) filter on `is_servable` independently. This is
+intentional duplication, not drift: Clippy must never score an asset
+OPENdraw itself would refuse to display, so it re-derives eligibility from
+the same manifest contract rather than trusting a cached decision from the
+API.
+
 ## Split integrity (leakage checks)
 
 The one-group-one-split rule is enforced over **every identity axis**;

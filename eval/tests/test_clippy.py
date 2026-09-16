@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import replace
 from pathlib import Path
 
 import numpy as np
@@ -94,3 +95,21 @@ def test_index_is_current_for_its_own_manifest(index):
 
     manifest = _load_manifest(FIXTURE_MANIFEST)
     assert index.is_current_for(manifest)
+
+
+def test_index_is_stale_after_manifest_content_change(index):
+    """A manifest_content_hash mismatch must be detected, not silently reused."""
+    from clippy.gallery import _load_manifest
+
+    manifest = _load_manifest(FIXTURE_MANIFEST)
+    stale = replace(index, manifest_content_hash="0" * 64)
+    assert not stale.is_current_for(manifest)
+
+
+def test_index_is_stale_after_clippy_version_bump(index):
+    """A clippy_version mismatch must be detected, not silently reused."""
+    from clippy.gallery import _load_manifest
+
+    manifest = _load_manifest(FIXTURE_MANIFEST)
+    stale = replace(index, clippy_version="clippy-0")
+    assert not stale.is_current_for(manifest)
