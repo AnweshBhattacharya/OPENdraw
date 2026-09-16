@@ -1,4 +1,4 @@
-# drawable · LineScout
+# OPENdraw · [LineScout]
 
 A local, line-art reference copilot for character artists: draw on a
 pressure-sensitive canvas and matching references appear after every stroke.
