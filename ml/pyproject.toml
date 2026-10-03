@@ -50,6 +50,17 @@ gpu = [
     "ftfy>=6.2",
     "tqdm>=4.66",
 ]
+download = [
+    # HuggingFace Datasets — used by scripts/download_popmanga.py and any
+    # future source-acquisition scripts. Kept separate from 'pipeline' so the
+    # manifest schema stays importable without pulling in the HF ecosystem.
+    "datasets>=2.20",
+    "pillow>=10.4",
+    # PopManga's loading script fetches images from MangaPlus at runtime;
+    # mloader is its download backend. Without it, load_dataset() fails
+    # before a single image is fetched.
+    "mloader>=1.1",
+]
 dev = [
     "pytest>=8.3",
     "ruff>=0.6",
@@ -68,6 +79,7 @@ packages = ["linescout_ml"]
 [tool.ruff]
 line-length = 100
 target-version = "py311"
+exclude = ["scripts/"]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B", "SIM", "N", "W"]
@@ -95,8 +107,15 @@ module = [
     "opennsfw2.*",
     "huggingface_hub.*",
     "google.colab.*",
+    "datasets.*",
 ]
 ignore_missing_imports = true
+
+# Acquisition scripts live in ml/scripts/ and are not part of the typed
+# package; exclude them from strict checking entirely.
+[[tool.mypy.overrides]]
+module = ["scripts.*"]
+ignore_errors = true
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
