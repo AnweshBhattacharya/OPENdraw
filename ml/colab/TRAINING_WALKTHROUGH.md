@@ -104,7 +104,7 @@ are visible. Prompts you to allow Drive access in a browser pop-up — approve i
 ```
 Mounted at /content/drive
 DCM pages found: 200
-Gallery output  : /content/drive/MyDrive/LineScout/gallery/2026.10.03-dcm-pilot
+Gallery output  : /content/drive/MyDrive/LineScout/gallery/2026.10.03-dcmpilot
 Sample filenames: ['c00004_p000.jpg', 'c00004_p001.jpg', …]
 ```
 
@@ -112,7 +112,7 @@ Sample filenames: ['c00004_p000.jpg', 'c00004_p001.jpg', …]
 the files are at `MyDrive/LineScout/sources/dcm/pages/` (not a subfolder inside it).
 
 > **Optional:** Change `DATASET_VERSION` to today's date before running if you want
-> a fresh output directory: `DATASET_VERSION = '2026.10.03-dcm-pilot'`
+> a fresh output directory: `DATASET_VERSION = '2026.10.03-dcmpilot'`
 
 ---
 
@@ -167,12 +167,12 @@ cross-hatching and brushwork).
 **Expected output:**
 ```
 PipelineConfig OK
-  dataset_version : 2026.10.03-dcm-pilot
+  dataset_version : 2026.10.03-dcmpilot
   source          : dcm  (200 images)
   extractor       : informative_drawings
   embedders       : ['mobileclip2_s2', 'dinov2_vits14']
   batch_size      : 8
-  output          : /content/drive/MyDrive/LineScout/gallery/2026.10.03-dcm-pilot
+  output          : /content/drive/MyDrive/LineScout/gallery/2026.10.03-dcmpilot
 ```
 
 **If you get a `ValidationError`:** One of the `SourceSpec` fields is wrong.
@@ -332,7 +332,7 @@ If a download dialog doesn't appear, check your browser's pop-up blocker.
 ```
 gallery.zip : 602 files  (38.4 MB)
 indexes.zip : 8 files    (6.1 MB)
-Copied to Drive: /content/drive/MyDrive/LineScout/exports/2026.10.03-dcm-pilot
+Copied to Drive: /content/drive/MyDrive/LineScout/exports/2026.10.03-dcmpilot
 Starting downloads to your machine …
 ```
 
@@ -348,14 +348,14 @@ locally. Read this before closing the tab.
 ## Part 5 — Bring the gallery home (run locally after downloading)
 
 Open PowerShell in the repo root and run these commands.
-Replace `2026.10.03-dcm-pilot` with your actual `DATASET_VERSION` if you changed it.
+Replace `2026.10.03-dcmpilot` with your actual `DATASET_VERSION` if you changed it.
 
 ### Step 5.1 — Unpack the ZIPs
 
 ```powershell
 # Unpack gallery
-New-Item -ItemType Directory -Force "data\gallery\2026.10.03-dcm-pilot"
-Expand-Archive "$env:USERPROFILE\Downloads\gallery.zip" -DestinationPath "data\gallery\2026.10.03-dcm-pilot\"
+New-Item -ItemType Directory -Force "data\gallery\2026.10.03-dcmpilot"
+Expand-Archive "$env:USERPROFILE\Downloads\gallery.zip" -DestinationPath "data\gallery\2026.10.03-dcmpilot\"
 
 # Unpack indexes
 New-Item -ItemType Directory -Force "data\indexes"
@@ -366,12 +366,12 @@ Expand-Archive "$env:USERPROFILE\Downloads\indexes.zip" -DestinationPath "data\i
 
 ```powershell
 ml\.venv\Scripts\python -m linescout_ml.cli validate `
-  data\gallery\2026.10.03-dcm-pilot\manifest.json --require-files
+  data\gallery\2026.10.03-dcmpilot\manifest.json --require-files
 ```
 
 **Expected output:**
 ```
-OK data\gallery\2026.10.03-dcm-pilot\manifest.json: 200 records, 0 servable
+OK data\gallery\2026.10.03-dcmpilot\manifest.json: 200 records, 0 servable
 artifact_contract=…
 ```
 
@@ -380,7 +380,7 @@ artifact_contract=…
 Edit (or create) `services/api/.env`:
 
 ```ini
-LINESCOUT_GALLERY_MANIFEST=data/gallery/2026.10.03-dcm-pilot/manifest.json
+LINESCOUT_GALLERY_MANIFEST=data/gallery/2026.10.03-dcmpilot/manifest.json
 LINESCOUT_CURATION_MODE=1
 LINESCOUT_FIXTURE_MODE=false
 LINESCOUT_DB_PATH=data/linescout.sqlite3
