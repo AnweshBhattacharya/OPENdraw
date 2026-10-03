@@ -29,7 +29,10 @@
 
 # group: base
 pydantic==2.13.5
-numpy==2.4.6
+# numpy pinned to 1.26.4: open-clip-torch 3.3.0 was compiled against numpy 1.x
+# and breaks on numpy 2.x (_slice removed from numpy._core.umath in 2.0).
+# Pin 1.26.4 here until open-clip-torch ships a numpy-2-compatible wheel.
+numpy==1.26.4
 pillow==12.3.0
 huggingface-hub==1.30.0
 safetensors==0.8.0
